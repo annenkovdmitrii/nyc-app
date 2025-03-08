@@ -1,21 +1,5 @@
+# Configure the page - MUST BE THE FIRST STREAMLIT COMMAND
 import streamlit as st
-import os
-from datetime import datetime
-import pytz
-import pandas as pd
-import time
-
-# Import our custom classes
-from nyc_weather import NYCWeather
-from mta_client import MTAClient
-
-try:
-    with open("assets/styles.css") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-except Exception as e:
-    st.warning(f"Note: Could not load custom CSS file: {e}")
-
-# Configure the page
 st.set_page_config(
     page_title="NYC Local Dashboard",
     page_icon="🗽",
@@ -23,11 +7,81 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
+# Set up auto-refresh
+def setup_auto_refresh():
+    # Initialize autorefresh in session state if it doesn't exist
+    if "autorefresh_enabled" not in st.session_state:
+        st.session_state.autorefresh_enabled = False
+    
+    if "refresh_interval" not in st.session_state:
+        st.session_state.refresh_interval = 60  # Default to 60 seconds
+    
+    # If autorefresh is enabled, set up the component
+    if st.session_state.autorefresh_enabled:
+        # Set up auto-refresh - returns the refresh counter
+        count = st_autorefresh(
+            interval=st.session_state.refresh_interval * 1000,  # Convert to milliseconds
+            key="datarefresh",
+            limit=None  # No limit on refreshes
+        )
+        return count
+    return None
+
+# Import standard libraries
+from streamlit_autorefresh import st_autorefresh
+import os
+from datetime import datetime
+import pytz
+import pandas as pd
+import time
+
+# Now import our custom classes
+from nyc_weather import NYCWeather
+from mta_client import MTAClient
+
+# Try to load CSS - AFTER page config
+try:
+    if os.path.exists("assets/styles.css"):
+        with open("assets/styles.css") as f:
+            st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
+except Exception as e:
+    st.warning(f"Could not load CSS: {e}")
+
 # --------------- SIDEBAR NAVIGATION ---------------
 def create_sidebar():
     with st.sidebar:
         st.title("NYC Dashboard")
         
+        st.divider()
+        
+        # Auto-refresh controls
+        st.subheader("Auto Refresh")
+        auto_refresh = st.checkbox(
+            "Enable auto-refresh", 
+            value=st.session_state.get("autorefresh_enabled", False),
+            help="Automatically refresh data at regular intervals"
+        )
+        
+        if auto_refresh:
+            refresh_interval = st.slider(
+                "Refresh interval (seconds)",
+                min_value=30,
+                max_value=300,
+                value=st.session_state.get("refresh_interval", 60),
+                step=30,
+                help="How often to refresh the data"
+            )
+            
+            # Update session state
+            st.session_state.autorefresh_enabled = auto_refresh
+            st.session_state.refresh_interval = refresh_interval
+            
+            # Show status
+            st.caption(f"Auto-refreshing every {refresh_interval} seconds")
+        else:
+            # Update session state
+            st.session_state.autorefresh_enabled = False
+
         # Try to load image, but don't crash if missing
         try:
             if os.path.exists("assets/nyc_icon.png"):
@@ -429,13 +483,21 @@ def show_subway_lookup():
         st.write(f"**{station_name}** (ID: {station_id})")
     
     with col2:
-        selected_line = st.selectbox("Line", ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "N", "Q", "R", "W"], 
-                                    index=0 if subway_line not in ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "N", "Q", "R", "W"] else 
-                                    ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "N", "Q", "R", "W"].index(subway_line))
+        selected_line = st.selectbox(
+            "Line", 
+            ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "N", "Q", "R", "W"], 
+            index=0 if subway_line not in ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "N", "Q", "R", "W"] else 
+            ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "N", "Q", "R", "W"].index(subway_line),
+            key="line_selector"
+        )
     
     with col3:
-        selected_direction = st.radio("Direction", ["Northbound", "Southbound"], 
-                                     index=0 if direction == "N" else 1)
+        selected_direction = st.radio(
+            "Direction", 
+            ["Northbound", "Southbound"], 
+            index=0 if direction == "N" else 1,
+            key="direction_selector"  # Added unique key
+        )
     
     if st.button("Get Train Times"):
         st.session_state.subway_line = selected_line
