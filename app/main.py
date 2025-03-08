@@ -7,26 +7,6 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Set up auto-refresh
-def setup_auto_refresh():
-    # Initialize autorefresh in session state if it doesn't exist
-    if "autorefresh_enabled" not in st.session_state:
-        st.session_state.autorefresh_enabled = False
-    
-    if "refresh_interval" not in st.session_state:
-        st.session_state.refresh_interval = 60  # Default to 60 seconds
-    
-    # If autorefresh is enabled, set up the component
-    if st.session_state.autorefresh_enabled:
-        # Set up auto-refresh - returns the refresh counter
-        count = st_autorefresh(
-            interval=st.session_state.refresh_interval * 1000,  # Convert to milliseconds
-            key="datarefresh",
-            limit=None  # No limit on refreshes
-        )
-        return count
-    return None
-
 # Import standard libraries
 from streamlit_autorefresh import st_autorefresh
 import os
@@ -36,9 +16,29 @@ import pandas as pd
 import time
 from utils import timed
 
-# Now import our custom classes
+# Import our custom classes
 from nyc_weather import NYCWeather
 from mta_client import MTAClient
+
+# Global configurations
+DEFAULT_STATIONS = [
+    {"id": "127", "name": "Times Sq-42 St", "lines": ["1", "2", "3"]},
+    {"id": "635", "name": "Grand Central", "lines": ["4", "5", "6"]},
+    {"id": "A27", "name": "42 St Port Authority", "lines": ["A", "C", "E"]}
+]
+
+# Setup auto-refresh
+def setup_auto_refresh():
+    # If auto-refresh is enabled, set it up
+    if st.session_state.get("autorefresh_enabled", False):
+        # Set up auto-refresh - returns the refresh counter
+        count = st_autorefresh(
+            interval=60 * 1000,  # 60 seconds in milliseconds
+            key="datarefresh",
+            limit=None  # No limit on refreshes
+        )
+        return count
+    return None
 
 # Try to load CSS - AFTER page config
 try:
@@ -48,6 +48,33 @@ try:
 except Exception as e:
     st.warning(f"Could not load CSS: {e}")
 
+# Lazy load clients to improve performance
+def get_weather_client(zip_code):
+    """Get or create a weather client instance."""
+    if "weather_client" not in st.session_state:
+        st.session_state.weather_client = {}
+    
+    if zip_code not in st.session_state.weather_client:
+        st.session_state.weather_client[zip_code] = NYCWeather(zip_code=zip_code)
+    
+    return st.session_state.weather_client[zip_code]
+
+def get_mta_client():
+    """Get or create an MTA client instance."""
+    if "mta_client" not in st.session_state:
+        st.session_state.mta_client = MTAClient()
+    
+    return st.session_state.mta_client
+
+# Initialize session state if not already set
+def init_session_state():
+    if "zip_code" not in st.session_state:
+        st.session_state.zip_code = "10022"
+    if "autorefresh_enabled" not in st.session_state:
+        st.session_state.autorefresh_enabled = False
+    if "default_stations" not in st.session_state:
+        st.session_state.default_stations = DEFAULT_STATIONS
+
 # --------------- SIDEBAR NAVIGATION ---------------
 def create_sidebar():
     with st.sidebar:
@@ -55,34 +82,6 @@ def create_sidebar():
         
         st.divider()
         
-        # Auto-refresh controls
-        st.subheader("Auto Refresh")
-        auto_refresh = st.checkbox(
-            "Enable auto-refresh", 
-            value=st.session_state.get("autorefresh_enabled", False),
-            help="Automatically refresh data at regular intervals"
-        )
-        
-        if auto_refresh:
-            refresh_interval = st.slider(
-                "Refresh interval (seconds)",
-                min_value=30,
-                max_value=300,
-                value=st.session_state.get("refresh_interval", 60),
-                step=30,
-                help="How often to refresh the data"
-            )
-            
-            # Update session state
-            st.session_state.autorefresh_enabled = auto_refresh
-            st.session_state.refresh_interval = refresh_interval
-            
-            # Show status
-            st.caption(f"Auto-refreshing every {refresh_interval} seconds")
-        else:
-            # Update session state
-            st.session_state.autorefresh_enabled = False
-
         # Try to load image, but don't crash if missing
         try:
             if os.path.exists("assets/nyc_icon.png"):
@@ -107,7 +106,7 @@ def create_sidebar():
         
         st.divider()
         
-        # Simple settings
+        # Settings
         with st.expander("Settings"):
             zip_code = st.text_input(
                 "ZIP Code",
@@ -115,90 +114,111 @@ def create_sidebar():
                 help="NYC ZIP code for weather data"
             )
             
-            station_id = st.text_input(
-                "Station ID",
-                value=st.session_state.get("station_id", "127"),
-                help="MTA station ID (e.g., 127 for Times Square)"
-            )
-            
-            subway_line = st.selectbox(
-                "Subway Line",
-                ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "B", "D", "F", "M", "N", "Q", "R", "W"],
-                index=["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "B", "D", "F", "M", "N", "Q", "R", "W"].index(
-                    st.session_state.get("subway_line", "1")
-                ) if st.session_state.get("subway_line", "1") in ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "B", "D", "F", "M", "N", "Q", "R", "W"] else 0
-            )
-            
-            direction = st.radio(
-                "Direction",
-                ["Northbound", "Southbound"],
-                index=0 if st.session_state.get("direction", "N") == "N" else 1
-            )
-            
             if st.button("Save Settings"):
                 st.session_state.zip_code = zip_code
-                st.session_state.station_id = station_id
-                st.session_state.subway_line = subway_line
-                st.session_state.direction = "N" if direction == "Northbound" else "S"
                 st.success("Settings saved!")
                 st.rerun()
         
-        # Initialize session state if not already set
-        if "zip_code" not in st.session_state:
-            st.session_state.zip_code = "10022"
-        if "station_id" not in st.session_state:
-            st.session_state.station_id = "127"
-        if "subway_line" not in st.session_state:
-            st.session_state.subway_line = "1"
-        if "direction" not in st.session_state:
-            st.session_state.direction = "N"
-        
         if st.button("Refresh Data"):
             st.rerun()
-        
-        # Auto-refresh option
-        auto_refresh = st.checkbox("Auto-refresh (1 min)", value=False)
-        if auto_refresh:
-            st.caption("Refreshing automatically...")
-            # Use JavaScript to auto-refresh after 60 seconds
-            st.markdown(
-                """
-                <script>
-                    setTimeout(function() {
-                        window.location.reload();
-                    }, 60000);
-                </script>
-                """,
-                unsafe_allow_html=True
-            )
         
         st.divider()
         st.caption("© 2025 NYC Local Dashboard")
     
     return page
 
+# --------------- TRAIN ARRIVALS DISPLAY ---------------
+def display_train_arrivals(station_info, mta_client, num_trains=2):
+    """Display train arrivals for a single station in both directions."""
+    station_id = station_info["id"]
+    station_name = station_info["name"]
+    default_line = station_info["lines"][0]
+    
+    st.subheader(f"{station_name}")
+    
+    # Use a single level of columns for the directions
+    cols = st.columns(2)
+    
+    # Display northbound trains
+    with cols[0]:
+        st.markdown("**🔼 Northbound**")
+        display_direction_trains(station_id, default_line, "N", mta_client, num_trains)
+    
+    # Display southbound trains
+    with cols[1]:
+        st.markdown("**🔽 Southbound**")
+        display_direction_trains(station_id, default_line, "S", mta_client, num_trains)
+
+def display_direction_trains(station_id, line, direction, mta_client, limit=2):
+    """Display trains for a specific direction."""
+    with st.spinner("Loading..."):
+        trains = mta_client.get_upcoming_trains(line, station_id, direction, limit=limit)
+        
+        if not trains.empty:
+            now = datetime.now(pytz.timezone('America/New_York'))
+            
+            for _, train in trains.iterrows():
+                mins = int((train['arrival_time'] - now).total_seconds() / 60)
+                
+                # Get the right color for the line
+                if train['route_id'] in "123":
+                    line_color = "#EE352E"  # Red
+                elif train['route_id'] in "456":
+                    line_color = "#00933C"  # Green
+                elif train['route_id'] in "7":
+                    line_color = "#B933AD"  # Purple
+                elif train['route_id'] in "ACE":
+                    line_color = "#0039A6"  # Blue
+                elif train['route_id'] in "BDFM":
+                    line_color = "#FF6319"  # Orange
+                elif train['route_id'] in "G":
+                    line_color = "#6CBE45"  # Light Green
+                elif train['route_id'] in "JZ":
+                    line_color = "#996633"  # Brown
+                elif train['route_id'] in "NQRW":
+                    line_color = "#FCCC0A"  # Yellow with dark text
+                elif train['route_id'] in "L":
+                    line_color = "#A7A9AC"  # Grey
+                else:
+                    line_color = "#999999"  # Default grey
+                
+                text_color = "white"
+                if train['route_id'] in "NQRW":  # Yellow lines need dark text
+                    text_color = "black"
+                
+                # Instead of using columns inside columns, create a single row with the train info
+                arrival_text = "Arriving now" if mins <= 0 else f"{mins} min"
+                train_html = f"""
+                <div style="display:flex;align-items:center;margin-bottom:8px;">
+                    <div style="width:30px;height:30px;border-radius:50%;background-color:{line_color};
+                    color:{text_color};display:flex;align-items:center;justify-content:center;font-weight:bold;margin-right:10px;">
+                    {train['route_id']}
+                    </div>
+                    <div>
+                        <strong>{arrival_text}</strong> ({train['arrival_time'].strftime('%I:%M %p')})
+                    </div>
+                </div>
+                """
+                st.markdown(train_html, unsafe_allow_html=True)
+        else:
+            st.caption("No upcoming trains found")
+
 # --------------- DASHBOARD PAGE ---------------
 @timed
 def show_dashboard():
     st.title("NYC Local Dashboard")
     
-    # Get settings
-    zip_code = st.session_state.zip_code
-    station_id = st.session_state.station_id
-    subway_line = st.session_state.subway_line
-    direction = st.session_state.direction
-    
     # Initialize clients
-    weather = NYCWeather(zip_code=zip_code)
-    mta = MTAClient()
+    weather_client = get_weather_client(st.session_state.zip_code)
+    mta_client = get_mta_client()
     
-    # Create two columns
-    col1, col2 = st.columns(2)
+    # Weather section
+    weather_col, stations_col = st.columns([1, 2])
     
-    with col1:
+    with weather_col:
         st.subheader("Weather")
         with st.spinner("Loading weather data..."):
-            current = weather.fetch_current_weather()
+            current = weather_client.fetch_current_weather()
             if current:
                 location = current["location"]["name"]
                 region = current["location"]["region"]
@@ -222,93 +242,66 @@ def show_dashboard():
                 st.caption(f"Last updated: {current['current']['last_updated']}")
             else:
                 st.error("Weather data unavailable")
-    
-    with col2:
-        st.subheader("Subway")
-        with st.spinner("Loading subway data..."):
-            # Get subway info
-            station_info = mta.find_stations_by_id(station_id)
-            station_name = station_info.iloc[0]["clean_name"] if not station_info.empty else f"Station {station_id}"
-            
-            st.subheader(f"Line {subway_line} at {station_name}")
-            st.caption(f"{'Northbound' if direction == 'N' else 'Southbound'}")
-            
-            # Get train arrivals
-            trains = mta.get_upcoming_trains(subway_line, station_id, direction)
-            
-            if not trains.empty:
-                # Draw train arrivals
-                now = datetime.now(pytz.timezone('America/New_York'))
                 
-                for _, train in trains.iterrows():
-                    mins = int((train['arrival_time'] - now).total_seconds() / 60)
-                    cols = st.columns([1, 3, 1])
-                    
-                    with cols[0]:
-                        # Subway line circle
-                        line_color = "#EE352E" if subway_line in "123" else "#00933C"
-                        st.markdown(
-                            f"""
-                            <div style="width:40px;height:40px;border-radius:50%;background-color:{line_color};
-                            color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;">
-                            {subway_line}
-                            </div>
-                            """, 
-                            unsafe_allow_html=True
-                        )
-                    
-                    with cols[1]:
-                        if mins <= 0:
-                            st.markdown("**Arriving now**")
-                        else:
-                            st.markdown(f"**Arrives in {mins} min**")
-                        st.caption(f"Train: {train['trip_id'][:6]}")
-                    
-                    with cols[2]:
-                        st.markdown(f"**{train['arrival_time'].strftime('%I:%M %p')}**")
-                    
-                    st.divider()
+        # Next few hours forecast
+        st.subheader("Next 3 Hours")
+        with st.spinner("Loading forecast..."):
+            forecast = weather_client.fetch_forecast_weather(days=1)
+            if forecast and "forecast" in forecast:
+                now = datetime.now()
+                current_hour = now.hour
                 
-                st.caption(f"Last updated: {now.strftime('%I:%M:%S %p')}")
-            else:
-                st.error("Train data unavailable")
-    
-    # Hourly forecast
-    st.header("Next 5 Hours")
-    with st.spinner("Loading forecast..."):
-        forecast = weather.fetch_forecast_weather(days=2)
-        if forecast and "forecast" in forecast:
-            # Get current hour and upcoming hours
-            now = datetime.now()
-            current_hour = now.hour
-            
-            # Get hourly data
-            hours = []
-            for day in forecast["forecast"]["forecastday"]:
-                for hour in day["hour"]:
-                    hour_time = datetime.strptime(hour["time"], "%Y-%m-%d %H:%M")
-                    if (day == forecast["forecast"]["forecastday"][0] and hour_time.hour >= current_hour) or \
-                       (day != forecast["forecast"]["forecastday"][0]):
-                        hours.append(hour)
-            
-            # Display next 5 hours
-            hour_cols = st.columns(5)
-            for i in range(5):
-                if i < len(hours):
-                    hour = hours[i]
-                    hour_time = datetime.strptime(hour["time"], "%Y-%m-%d %H:%M")
-                    
-                    with hour_cols[i]:
-                        st.write(f"**{hour_time.strftime('%I %p')}**")
-                        st.write(f"{hour['temp_c']}°C")
-                        st.write(hour['condition']['text'])
+                # Get hourly data
+                hours = []
+                for day in forecast["forecast"]["forecastday"]:
+                    for hour in day["hour"]:
+                        hour_time = datetime.strptime(hour["time"], "%Y-%m-%d %H:%M")
+                        if (day == forecast["forecast"]["forecastday"][0] and hour_time.hour >= current_hour) or \
+                           (day != forecast["forecast"]["forecastday"][0]):
+                            hours.append(hour)
+                
+                # Display next 3 hours in a compact format
+                hour_cols = st.columns(3)
+                for i in range(3):
+                    if i < len(hours):
+                        hour = hours[i]
+                        hour_time = datetime.strptime(hour["time"], "%Y-%m-%d %H:%M")
                         
-                        if int(hour['chance_of_rain']) > 0:
-                            st.write(f"Rain: {hour['chance_of_rain']}%")
-        else:
-            st.error("Forecast data unavailable")
+                        with hour_cols[i]:
+                            st.write(f"**{hour_time.strftime('%I %p')}**")
+                            st.write(f"{hour['temp_c']}°C")
+                            if int(hour['chance_of_rain']) > 0:
+                                st.write(f"🌧️ {hour['chance_of_rain']}%")
+            else:
+                st.error("Forecast data unavailable")
+    
+    with stations_col:
+        st.subheader("Closest Train Stations")
+        
+        # Create 3 containers for the 3 default stations
+        for station in st.session_state.default_stations:
+            with st.container():
+                display_train_arrivals(station, mta_client)
+                st.divider()
+    
+    # Auto-refresh toggle at the bottom of the dashboard
+    st.divider()
+    auto_refresh = st.checkbox(
+        "Auto-refresh data every minute",
+        value=st.session_state.get("autorefresh_enabled", False)
+    )
+    
+    # Update session state if the checkbox value has changed
+    if auto_refresh != st.session_state.get("autorefresh_enabled", False):
+        st.session_state.autorefresh_enabled = auto_refresh
+        st.rerun()  # Rerun to apply the auto-refresh setting
+    
+    # Show the last update time
+    now = datetime.now()
+    st.caption(f"Last updated: {now.strftime('%I:%M:%S %p')}")
 
 # --------------- WEATHER DETAILS PAGE ---------------
+@timed
 def show_weather_details():
     st.title("NYC Weather Details")
     
@@ -316,7 +309,7 @@ def show_weather_details():
     zip_code = st.session_state.zip_code
     
     # Initialize weather client
-    weather = NYCWeather(zip_code=zip_code)
+    weather = get_weather_client(zip_code)
     
     # Fetch data
     with st.spinner("Fetching detailed weather..."):
@@ -415,16 +408,12 @@ def show_weather_details():
         st.error("Weather data unavailable. Please check your API key and connection.")
 
 # --------------- SUBWAY LOOKUP PAGE ---------------
+@timed
 def show_subway_lookup():
     st.title("NYC Subway Lookup")
     
-    # Get settings
-    station_id = st.session_state.station_id
-    subway_line = st.session_state.subway_line
-    direction = st.session_state.direction
-    
     # Initialize MTA client
-    mta = MTAClient()
+    mta = get_mta_client()
     
     # Station search section
     st.header("Find a Station")
@@ -459,115 +448,72 @@ def show_subway_lookup():
                         if 'lines' in station and station['lines']:
                             st.write("Lines: " + ", ".join(station['lines']))
                     
-                    # Button to select this station
+                    # Display the trains for this station
                     if st.button(f"Show trains at {station['clean_name']}", key=f"station_{station['core_id']}"):
-                        st.session_state.station_id = station['core_id']
+                        # Create a station info dictionary
+                        station_info = {
+                            "id": station['core_id'],
+                            "name": station['clean_name'],
+                            "lines": station['lines'] if 'lines' in station and station['lines'] else ["1"]
+                        }
                         
-                        # If station has multiple lines, choose the first one
-                        if 'lines' in station and station['lines']:
-                            st.session_state.subway_line = station['lines'][0]
-                        
-                        st.rerun()
+                        # Display train arrivals for this station
+                        display_train_arrivals(station_info, mta, num_trains=4)
                 
                 st.divider()
         else:
             st.warning(f"No stations found matching '{search_term}'")
     
-    # Train arrival section
-    st.header("Upcoming Trains")
+    # Display default stations
+    st.header("Default Stations")
     
-    # Station selection widget
-    col1, col2, col3 = st.columns([2, 1, 1])
+    for station in st.session_state.default_stations:
+        with st.expander(f"{station['name']} ({', '.join(station['lines'])})"):
+            display_train_arrivals(station, mta, num_trains=4)
+    
+    # Option to set a station as default
+    st.divider()
+    st.subheader("Customize Default Stations")
+    
+    # Input fields for a new default station
+    col1, col2, col3, col4 = st.columns([2, 1, 1, 1])
     
     with col1:
-        station_info = mta.find_stations_by_id(station_id)
-        station_name = station_info.iloc[0]["clean_name"] if not station_info.empty else f"Station {station_id}"
-        st.write(f"**{station_name}** (ID: {station_id})")
+        new_station_id = st.text_input("Station ID", placeholder="e.g. 127")
     
     with col2:
-        selected_line = st.selectbox(
-            "Line", 
-            ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "N", "Q", "R", "W"], 
-            index=0 if subway_line not in ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "N", "Q", "R", "W"] else 
-            ["1", "2", "3", "4", "5", "6", "7", "A", "C", "E", "N", "Q", "R", "W"].index(subway_line),
-            key="line_selector"
-        )
+        new_station_name = st.text_input("Station Name", placeholder="e.g. Times Square")
     
     with col3:
-        selected_direction = st.radio(
-            "Direction", 
-            ["Northbound", "Southbound"], 
-            index=0 if direction == "N" else 1,
-            key="direction_selector"  # Added unique key
-        )
+        new_station_line = st.text_input("Primary Line", placeholder="e.g. 1")
     
-    if st.button("Get Train Times"):
-        st.session_state.subway_line = selected_line
-        st.session_state.direction = "N" if selected_direction == "Northbound" else "S"
-        st.rerun()
-    
-    # Display train times
-    st.subheader(f"Line {subway_line} at {station_name}")
-    st.caption(f"{'Northbound' if direction == 'N' else 'Southbound'}")
-    
-    with st.spinner("Loading train data..."):
-        trains = mta.get_upcoming_trains(subway_line, station_id, direction, limit=10)
-        
-        if not trains.empty:
-            # Create a nicely formatted table of arrivals
-            now = datetime.now(pytz.timezone('America/New_York'))
-            
-            # Header row
-            cols = st.columns([1, 2, 2, 2])
-            with cols[0]:
-                st.write("**Line**")
-            with cols[1]:
-                st.write("**Train ID**")
-            with cols[2]:
-                st.write("**Minutes**")
-            with cols[3]:
-                st.write("**Time**")
-            
-            st.divider()
-            
-            # Train rows
-            for _, train in trains.iterrows():
-                mins = int((train['arrival_time'] - now).total_seconds() / 60)
+    with col4:
+        if st.button("Add to Defaults"):
+            if new_station_id and new_station_name and new_station_line:
+                # Create a new station entry
+                new_station = {
+                    "id": new_station_id,
+                    "name": new_station_name,
+                    "lines": [new_station_line]
+                }
                 
-                cols = st.columns([1, 2, 2, 2])
+                # Add to session state
+                if len(st.session_state.default_stations) < 3:
+                    st.session_state.default_stations.append(new_station)
+                else:
+                    # Replace the last one
+                    st.session_state.default_stations[2] = new_station
                 
-                with cols[0]:
-                    # Subway line circle
-                    line_color = "#EE352E" if subway_line in "123" else "#00933C"
-                    st.markdown(
-                        f"""
-                        <div style="width:30px;height:30px;border-radius:50%;background-color:{line_color};
-                        color:white;display:flex;align-items:center;justify-content:center;font-weight:bold;">
-                        {subway_line}
-                        </div>
-                        """, 
-                        unsafe_allow_html=True
-                    )
-                
-                with cols[1]:
-                    st.write(train['trip_id'][:6])
-                
-                with cols[2]:
-                    if mins <= 0:
-                        st.markdown("**Arriving now**")
-                    else:
-                        st.markdown(f"{mins} min")
-                
-                with cols[3]:
-                    st.write(train['arrival_time'].strftime('%I:%M %p'))
-                
-                st.divider()
-            
-            st.caption(f"Last updated: {now.strftime('%I:%M:%S %p')}")
-        else:
-            st.error("No train data available")
+                st.success(f"Added {new_station_name} to default stations!")
+                st.rerun()
 
 # --------------- MAIN APP ---------------
+# Initialize session state
+init_session_state()
+
+# Setup auto-refresh
+refresh_count = setup_auto_refresh()
+
 # Create sidebar and get selected page
 selected_page = create_sidebar()
 
