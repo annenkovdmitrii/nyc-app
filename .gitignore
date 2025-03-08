@@ -40,8 +40,9 @@ docker-compose.override.yml
 *.sqlite
 *.db
 
-# Local data
-data/
-
 # OS generated
 .DS_Store
+
+#Files 
+*.csv
+*.json

@@ -12,14 +12,10 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # Copy application code
-COPY app/ /app/app/
-COPY lib/ /app/lib/
+COPY app/ /app/
 
 # Make sure data directory exists
 RUN mkdir -p /app/data/weather_cache /app/data/mta_cache
 
-# Set Python path to include lib directory
-ENV PYTHONPATH="${PYTHONPATH}:/app"
-
 # Run the Streamlit app
-CMD ["streamlit", "run", "app/main.py", "--server.port=8501", "--server.address=0.0.0.0"]
+CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]

@@ -5,8 +5,8 @@ services:
     ports:
       - "8501:8501"
     volumes:
-      - ./data:/app/data
-      - ./app:/app/app
+      - ./data:/app/data  
+      - ./app:/app        
     environment:
       - WEATHER_API_KEY=${WEATHER_API_KEY}
     env_file:

@@ -273,22 +273,3 @@ class NYCWeather:
         self.display_3day_forecast()
         
         print("\nWeather data fetch complete!")
-
-
-# # Example usage
-# if __name__ == "__main__":
-#     # Create weather object with default ZIP code
-#     nyc_weather = NYCWeather()
-    
-#     # Run the complete weather report
-#     nyc_weather.run()
-    
-#     # Alternative usage examples:
-#     # 
-#     # # Get weather for a different NYC ZIP code (Brooklyn)
-#     # brooklyn_weather = NYCWeather(zip_code="11201")
-#     # brooklyn_weather.run()
-#     # 
-#     # # Get only the current weather
-#     # queens_weather = NYCWeather(zip_code="11101")
-#     # queens_weather.display_current_weather()
