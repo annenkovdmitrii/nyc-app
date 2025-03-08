@@ -6,6 +6,7 @@ nyc-app/
 ├── .env                         # Environment variables (API keys, etc.)
 │
 ├── app/                         # Streamlit application
+│   ├── __init__.py 
 │   ├── main.py                  # Main Streamlit entry point
 │   ├── sidebar.py               # Sidebar navigation component
 │   ├── pages/                   # Page components
@@ -14,6 +15,7 @@ nyc-app/
 │   │   └── subway_page.py       # Detailed subway information
 │   │
 │   ├── components/              # Reusable UI components
+│   ├── __init__.py 
 │   │   ├── weather_card.py      # Weather display components
 │   │   └── subway_card.py       # Subway display components
 │   │
