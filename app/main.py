@@ -34,6 +34,7 @@ from datetime import datetime
 import pytz
 import pandas as pd
 import time
+from utils import timed
 
 # Now import our custom classes
 from nyc_weather import NYCWeather
@@ -177,6 +178,7 @@ def create_sidebar():
     return page
 
 # --------------- DASHBOARD PAGE ---------------
+@timed
 def show_dashboard():
     st.title("NYC Local Dashboard")
     
