@@ -1,0 +1,14 @@
+services:
+  nyc-app:
+    build: .
+    container_name: nyc-dashboard
+    ports:
+      - "8501:8501"
+    volumes:
+      - ./data:/app/data
+      - ./app:/app/app
+    environment:
+      - WEATHER_API_KEY=${WEATHER_API_KEY}
+    env_file:
+      - .env
+    restart: unless-stopped
