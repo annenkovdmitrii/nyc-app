@@ -1,13 +1,15 @@
 services:
-  nyc-app:
-    build: .
-    container_name: nyc-dashboard
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
     ports:
       - "8501:8501"
     volumes:
-      - ./data:/app/data   
-    environment:
-      - WEATHER_API_KEY=${WEATHER_API_KEY}
+      - ./app:/app
+      - ./data:/app/data/
     env_file:
-      - .env
+      - ./.env  
+    environment:
+      - UV_NATIVE_WHEELS=1  
     restart: unless-stopped
