@@ -22,9 +22,9 @@ from mta_client import MTAClient
 
 # Global configurations
 DEFAULT_STATIONS = [
-    {"id": "127", "name": "Times Sq-42 St", "lines": ["1", "2", "3"]},
-    {"id": "635", "name": "Grand Central", "lines": ["4", "5", "6"]},
-    {"id": "A27", "name": "42 St Port Authority", "lines": ["A", "C", "E"]}
+    {"id": "630", "name": "51 St", "lines": ["6"]},
+    {"id": "F12", "name": "5 Av/53 St", "lines": ["E"]},
+    {"id": "F11", "name": "Lexington Av/53 St", "lines": ["M"]}
 ]
 
 # Setup auto-refresh
@@ -92,7 +92,7 @@ def create_sidebar():
             st.write("🗽 NYC")
         
         # Current time
-        now = datetime.now()
+        now = datetime.now(pytz.timezone('America/New_York'))
         st.write(f"**{now.strftime('%A, %B %d, %Y')}**")
         st.write(f"*{now.strftime('%I:%M %p')}*")
         
