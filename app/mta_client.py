@@ -29,7 +29,7 @@ class MTAClient:
     
     # URL for MTA's static GTFS data
     GTFS_URL = "http://web.mta.info/developers/data/nyct/subway/google_transit.zip"
-    CACHE_DIR = "data/mta_cache"
+    CACHE_DIR = "../data/mta_cache"
     
     def __init__(self, use_cache=True, verbose=True):
         """

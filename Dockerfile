@@ -19,8 +19,5 @@ RUN uv pip install --system --no-cache-dir -r requirements.txt
 # Copy application code
 COPY app/ /app/
 
-# Make sure data directory exists
-RUN mkdir -p /app/data/weather_cache /app/data/mta_cache
-
 # Run the Streamlit app
 CMD ["streamlit", "run", "main.py", "--server.port=8501", "--server.address=0.0.0.0"]

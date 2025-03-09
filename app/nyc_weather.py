@@ -22,7 +22,7 @@ class NYCWeather:
         self.forecast_url = "http://api.weatherapi.com/v1/forecast.json"
         
         # Cache paths
-        self.cache_dir = "data/weather_cache"
+        self.cache_dir = "../data/weather_cache"
         os.makedirs(self.cache_dir, exist_ok=True)
         
     def _log_error(self, message):
